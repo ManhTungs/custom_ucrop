@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.FileUtils;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.util.LruCache;
@@ -21,6 +22,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
+import androidx.constraintlayout.utils.widget.ImageFilterView;
 import androidx.core.content.FileProvider;
 
 import com.bumptech.glide.Glide;
@@ -43,31 +45,31 @@ public class MainActivity extends AppCompatActivity {
     CardView takenPicture;
     File cacheDir;
     ImageView img;
-    LruCache<String,Bitmap> mMemoryCache;
+    LruCache<String, Bitmap> mMemoryCache;
     ActivityResultLauncher<Intent> mActivityResultLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             new ActivityResultCallback<ActivityResult>() {
                 @Override
                 public void onActivityResult(ActivityResult o) {
-//            if (o.getResultCode()== Activity.RESULT_OK){
-//                Intent data=o.getData();
-//                if (data==null){
-//                    return;
-//                }
-//                Uri uri=data.getData();
-//                File mediaFile = new File(uri.getPath());
-//
-//                Log.e("dfdf", "size image: "+mediaFile.length() );
-//
-//                UCrop uCrop=UCrop.of(uri, Uri.fromFile(new File(getCacheDir(),uri.getAuthority()+".jpeg")));
-//
-//                uCrop=basicConfig(uCrop);
-//                uCrop=advancedConfig(uCrop);
-//
-//
-//                uCrop.start(MainActivity.this);
-//
-//            }
+                    if (o.getResultCode() == Activity.RESULT_OK) {
+                        Intent data = o.getData();
+                        if (data == null) {
+                            return;
+                        }
+                        Uri uri = data.getData();
+                        File mediaFile = new File(uri.getPath());
+
+                        Log.e("dfdf", "size image: " + mediaFile.length());
+
+                        UCrop uCrop = UCrop.of(uri, Uri.fromFile(new File(getCacheDir(), uri.getAuthority() + ".jpeg")));
+
+                        uCrop = basicConfig(uCrop);
+                        uCrop = advancedConfig(uCrop);
+
+
+                        uCrop.start(MainActivity.this);
+
+                    }
                 }
             });
 
@@ -100,61 +102,65 @@ public class MainActivity extends AppCompatActivity {
         cameraView.addCameraListener(new CameraListener() {
             @Override
             public void onPictureTaken(@NonNull PictureResult result) {
-                Bitmap bitmap= BitmapFactory.decodeByteArray(result.getData(),0,result.getData().length);
+                try {
+                    handleSaveToInternal(result);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
 
-                final int maxMemory= (int) (Runtime.getRuntime().maxMemory()/1024);
-                final int cacheSize=maxMemory/8;
-                mMemoryCache=new LruCache<String,Bitmap>(cacheSize){
-                    @Override
-                    protected int sizeOf(String key, Bitmap value) {
-                        return bitmap.getByteCount()/1024;
-                    }
-                };
-
-                addBitmapToMemoryCache("image_taken",bitmap);
 
             }
         });
     }
-    public void addBitmapToMemoryCache(String key,Bitmap bitmap){
-        if(getBitmapFromMemCache(key)==null){
-            mMemoryCache.put(key, bitmap);
 
+    private void handleSaveToInternal(PictureResult result) throws IOException {
+        try {
+            String NamePicture = "takenPicture.jpeg";
+            File DirectoryInternal = new File(getFilesDir(), "picture_taken");
+            File filePictureTaken = new File(DirectoryInternal, NamePicture);
+            if (!DirectoryInternal.exists()) {
+                DirectoryInternal.mkdirs();
+            }
+
+            FileOutputStream fileOutputStream = new FileOutputStream(filePictureTaken);
+            fileOutputStream.write(result.getData());
+            fileOutputStream.close();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
+
+        startCrop();
     }
 
-    public Bitmap getBitmapFromMemCache(String key){
-        return mMemoryCache.get(key);
+    private void startCrop() throws IOException {
+
+        File directoryInternal = new File(getFilesDir(), "picture_taken");
+        File directoryInternalCropped=new File(getFilesDir(),"picture_cropped");
+
+        File fileDestinationFile=File.createTempFile("cropped_image",".jpeg",directoryInternalCropped);
+        if (!directoryInternalCropped.exists()){
+            directoryInternalCropped.mkdirs();
+        }
+
+        Uri destinationUri=Uri.fromFile(fileDestinationFile);
+
+        File imageFile = new File(directoryInternal, "takenPicture.jpeg");
+
+        Uri imageUri = null;
+        if (imageFile.exists()) {
+            imageUri = FileProvider.getUriForFile(this, "com.example.ucrop.provider", imageFile);
+            UCrop uCrop = UCrop.of(imageUri, destinationUri);
+
+            uCrop = basicConfig(uCrop);
+            uCrop = advancedConfig(uCrop);
+
+            uCrop.start(MainActivity.this);
+        } else {
+            Log.e("dfdf", "file not exists: ");
+        }
+
+
     }
-
-//    public void loadBitmap(int resId,ImageView imageView){
-//        final String imageKey =String.valueOf(resId);
-//
-//        final Bitmap bitmap = getBitmapFromMemCache(imageKey);
-//        if(bitmap !=null) {
-//            mImageView.setImageBitmap(bitmap);
-//        } else {
-//            mImageView.setImageResource(R.drawable.image_placeholder);
-//            BitmapWorkerTask task =newBitmapWorkerTask(mImageView);
-//            task.execute(resId);
-//        }
-//    }
-
-
-
-
-
-
-
-    private void pickFromGallery() {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT)
-                .setType("image/*")
-                .addCategory(Intent.CATEGORY_OPENABLE);
-        mActivityResultLauncher.launch(Intent.createChooser(intent, "Select Picture"));
-
-    }
-
-
     private UCrop basicConfig(UCrop uCrop) {
         uCrop = uCrop.useSourceImageAspectRatio();
         return uCrop;
@@ -167,10 +173,15 @@ public class MainActivity extends AppCompatActivity {
         options.setCompressionFormat(Bitmap.CompressFormat.PNG);
         options.setCompressionQuality(100);
         options.setFreeStyleCropEnabled(true);
-        options.setHideBottomControls(false);
+        options.setHideBottomControls(true);
 
         return uCrop.withOptions(options);
     }
-
+    private void pickFromGallery() {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT)
+                .setType("image/*")
+                .addCategory(Intent.CATEGORY_OPENABLE);
+        mActivityResultLauncher.launch(Intent.createChooser(intent, "Select Picture"));
+    }
 
 }

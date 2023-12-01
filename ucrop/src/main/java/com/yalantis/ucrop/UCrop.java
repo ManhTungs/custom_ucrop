@@ -12,6 +12,7 @@ import android.os.Bundle;
 import android.os.Parcelable;
 import android.util.Log;
 
+import com.yalantis.ucrop.custom.CustomEditPictureActivity;
 import com.yalantis.ucrop.model.AspectRatio;
 
 import java.util.ArrayList;
@@ -185,7 +186,7 @@ public class UCrop {
      * @return Intent for {@link UCropActivity}
      */
     public Intent getIntent(@NonNull Context context) {
-        mCropIntent.setClass(context, UCropActivity.class);
+        mCropIntent.setClass(context, CustomEditPictureActivity.class);
         mCropIntent.putExtras(mCropOptionsBundle);
         return mCropIntent;
     }
